@@ -173,42 +173,13 @@
 
 **权限控制**
 
-- Webhook 服务使用 ServiceAccount 运行，只授予必要的权限
-- 使用 RBAC 配置最小权限集
-
-**RBAC 配置详情**
-
-Webhook 需要访问 Kubernetes API Server 来修改 Pod 的 YAML 配置，因此需要授予相应的 RBAC 权限：
-
-```yaml
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
-metadata:
-  name: pod-resource-injector-role
-rules:
-- apiGroups: [""]
-  resources: ["pods"]
-  verbs: ["patch"]
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
-metadata:
-  name: pod-resource-injector-binding
-subjects:
-- kind: ServiceAccount
-  name: pod-resource-injector
-  namespace: default
-roleRef:
-  kind: ClusterRole
-  name: pod-resource-injector-role
-  apiGroup: rbac.authorization.k8s.io
-```
+- Webhook 服务使用 ServiceAccount 运行
+- **不需要 RBAC 权限**：Admission Webhook 通过 AdmissionReview 响应中的 Patch 字段实现修改，而不是直接调用 Kubernetes API
 
 **权限说明**：
 - Webhook 监听 Pod 创建事件：由 Kubernetes API 服务器主动推送 AdmissionReview 请求
-- Webhook 修改 Pod 配置：需要 `patch` 权限来修改 Pod 的 YAML 文件
-- 最小权限原则：只授予 `patch` 权限，不授予 get/list/watch/create/delete 等其他权限
+- Webhook 修改 Pod 配置：通过在 AdmissionReview 响应中返回 Patch 操作来实现，不需要直接调用 Kubernetes API
+- 最小权限原则：只使用 ServiceAccount 作为身份标识，不授予任何额外权限
 
 **错误处理**
 
@@ -248,7 +219,7 @@ roleRef:
 1. **构建镜像**：构建 Webhook 服务镜像
 2. **创建 TLS 证书**：使用 openssl 命令手动生成 TLS 证书，或通过外部证书管理系统生成
 3. **证书注入**：将证书文件通过镜像、initContainer、或 CSI 驱动挂载到 Pod 中，不使用 Kubernetes Secret 存储
-4. **部署服务**：部署 Webhook 服务和相关资源
+4. **部署服务**：部署 Webhook 服务和相关资源（包括 ServiceAccount）
 5. **配置 Webhook**：创建 MutatingWebhookConfiguration
 
 ### 7.2 维护建议

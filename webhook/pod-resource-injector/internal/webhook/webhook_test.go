@@ -20,6 +20,7 @@ func TestMatchesNodeSelector(t *testing.T) {
 	tests := []struct {
 		name         string
 		nodeSelector map[string]string
+		labels       map[string]string
 		expected     bool
 	}{
 		{
@@ -27,6 +28,7 @@ func TestMatchesNodeSelector(t *testing.T) {
 			nodeSelector: map[string]string{
 				"topology.kubernetes.io/zone": "supernode",
 			},
+			labels:     nil,
 			expected: true,
 		},
 		{
@@ -34,17 +36,36 @@ func TestMatchesNodeSelector(t *testing.T) {
 			nodeSelector: map[string]string{
 				"topology.kubernetes.io/zone": "other-zone",
 			},
+			labels:     nil,
 			expected: false,
 		},
 		{
-			name:         "Pod with no nodeSelector",
+			name:         "Pod with no nodeSelector and no labels",
 			nodeSelector: nil,
+			labels:       nil,
 			expected:     false,
 		},
 		{
 			name: "Pod with partial nodeSelector",
 			nodeSelector: map[string]string{
 				"other-label": "true",
+			},
+			labels:     nil,
+			expected: false,
+		},
+		{
+			name:         "Pod with matching labels (from Deployment)",
+			nodeSelector: nil,
+			labels: map[string]string{
+				"topology.kubernetes.io/zone": "supernode",
+			},
+			expected: true,
+		},
+		{
+			name:         "Pod with non-matching labels",
+			nodeSelector: nil,
+			labels: map[string]string{
+				"topology.kubernetes.io/zone": "other-zone",
 			},
 			expected: false,
 		},
@@ -53,6 +74,9 @@ func TestMatchesNodeSelector(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			pod := &corev1.Pod{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: tt.labels,
+				},
 				Spec: corev1.PodSpec{
 					NodeSelector: tt.nodeSelector,
 				},

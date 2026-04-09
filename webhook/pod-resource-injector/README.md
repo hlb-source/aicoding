@@ -13,7 +13,6 @@
 - **高可用性**：支持多副本部署，配备健康检查和就绪探针
 - **可观测性**：完善的日志记录，便于问题排查和性能监控
 - **性能优化**：优化处理逻辑，确保并发创建100个Pod时，时间增加不超过100ms
-- **最小权限**：使用专用 ServiceAccount 和 RBAC，遵循最小权限原则
 
 ## 技术栈
 
@@ -36,7 +35,6 @@ pod-resource-injector/
 │       └── webhook_test.go   # 测试代码
 ├── deploy/           # 部署配置
 │   ├── deployment.yaml       # 服务部署
-│   ├── rbac.yaml             # RBAC 配置
 │   └── webhook.yaml          # Webhook 配置
 ├── go.mod            # Go 模块文件
 └── README.md         # 项目说明
@@ -83,9 +81,6 @@ CA_BUNDLE=$(cat certs/ca.crt | base64 | tr -d '\n')
 ### 3. 部署服务
 
 ```bash
-# 部署 RBAC
-kubectl apply -f deploy/rbac.yaml
-
 # 部署服务
 kubectl apply -f deploy/deployment.yaml
 

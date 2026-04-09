@@ -44,17 +44,27 @@ func getRequiredNodeSelector() map[string]string {
 func matchesNodeSelector(pod *corev1.Pod) bool {
 	requiredSelector := getRequiredNodeSelector()
 
-	if pod.Spec.NodeSelector == nil {
-		return false
-	}
-
-	for key, value := range requiredSelector {
-		if pod.Spec.NodeSelector[key] != value {
-			return false
+	// 首先检查Pod的NodeSelector
+	if pod.Spec.NodeSelector != nil {
+		for key, value := range requiredSelector {
+			if pod.Spec.NodeSelector[key] != value {
+				return false
+			}
 		}
+		return true
 	}
 
-	return true
+	// 如果Pod的NodeSelector为空，检查Pod的Labels（从控制器继承的情况）
+	if pod.ObjectMeta.Labels != nil {
+		for key, value := range requiredSelector {
+			if pod.ObjectMeta.Labels[key] != value {
+				return false
+			}
+		}
+		return true
+	}
+
+	return false
 }
 
 // 生成patch操作
