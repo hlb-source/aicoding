@@ -1,0 +1,38 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: MutatingWebhookConfiguration
+metadata:
+  name: pod-resource-injector
+webhooks:
+- name: pod-resource-injector.unifiedbus.com
+  clientConfig:
+    service:
+      namespace: default
+      name: pod-resource-injector
+      path: /mutate-pods
+      port: 443
+    # caBundle: API Server 用于验证 Webhook 服务端 TLS 证书的 CA 证书（Base64 编码）
+    # 在 mTLS 握手过程中，API Server（客户端）使用此 CA 证书验证 Webhook 服务（服务端）返回的证书
+    # 需要将签发 Webhook 服务端证书的 CA 证书内容进行 Base64 编码后填入此处
+    caBundle: <CA_BUNDLE>
+  # rules: 定义哪些 API 操作会触发 Webhook 调用
+  # 以下配置限制只有创建 Pod 时才会调用 Webhook
+  rules:
+  - operations: ["CREATE"]      # 仅监听创建操作
+    apiGroups: [""]             # 核心 API 组（空字符串表示核心组）
+    apiVersions: ["v1"]         # API 版本 v1
+    resources: ["pods"]         # 资源类型为 Pod
+    scope: "Namespaced"         # 仅匹配命名空间级资源（Pod 是命名空间级资源）
+  # namespaceSelector: 用于筛选哪些命名空间中的 Pod 创建请求会被 Webhook 处理
+  # 以下配置匹配 kube-system 和 ub-system 两个命名空间
+  namespaceSelector:
+    matchExpressions:
+    - key: kubernetes.io/metadata.name
+      operator: In
+      values: ["kube-system", "ub-system"]
+  # failurePolicy: 定义当 webhook 服务异常时的处理策略
+  # Fail: 当 webhook 服务异常或不可用时，Pod 创建请求会被拒绝（推荐用于生产环境）
+  # Ignore: 当 webhook 服务异常时，Pod 创建请求会继续执行，但不会被注入资源限制
+  failurePolicy: Fail
+  admissionReviewVersions: ["v1", "v1beta1"]
+  sideEffects: None
+  timeoutSeconds: 5

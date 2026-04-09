@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pod-resource-injector
+  namespace: default
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pod-resource-injector
+  namespace: default
+spec:
+  selector:
+    app: pod-resource-injector
+  ports:
+  - port: 443
+    targetPort: 8443
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pod-resource-injector
+  namespace: default
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: pod-resource-injector
+  template:
+    metadata:
+      labels:
+        app: pod-resource-injector
+    spec:
+      serviceAccountName: pod-resource-injector
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - pod-resource-injector
+            topologyKey: kubernetes.io/hostname
+
+      containers:
+      - name: pod-resource-injector
+        image: pod-resource-injector:latest
+        ports:
+        - containerPort: 8443
+        env:
+        - name: NODE_SELECTOR_KEY
+          value: "topology.kubernetes.io/zone"
+        - name: NODE_SELECTOR_VALUE
+          value: "supernode"
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 256Mi
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /readyz
+            port: 8443
+            scheme: HTTPS
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/tls
+          readOnly: true
+      volumes:
+      - name: tls
+        hostPath:
+          path: /etc/tls
+          type: Directory
+
