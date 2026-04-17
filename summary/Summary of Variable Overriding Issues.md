@@ -1,4 +1,4 @@
-# UBS URMA 代码分析报告
+# Go 编码变量遮蔽问题分析
 
 ## 1. 代码功能分析
 
@@ -131,19 +131,16 @@ type Device struct {
 ## 2. 技术实现
 
 ### 2.1 网络通信
-
 - 使用 Unix 域套接字进行进程间通信
 - 实现了完整的请求-响应机制
 - 设置了连接超时，避免无限等待
 
 ### 2.2 数据解析
-
 - 使用 `binary.LittleEndian` 解析二进制数据
 - 采用切片操作高效处理数据
 - 实现了字符串解析功能 `unpackString`
 
 ### 2.3 错误处理
-
 - 提供了详细的错误信息
 - 对各种错误情况进行了处理
 - 使用 `defer` 确保资源正确释放
@@ -151,7 +148,6 @@ type Device struct {
 ## 3. 代码优化建议
 
 ### 3.1 性能优化
-
 1. **预分配切片容量**：
    ```go
    devices := make([]Device, 0, count)
@@ -165,10 +161,9 @@ type Device struct {
    ```
    将变量声明移到循环外，避免每次循环都重新声明。
 
+## 4. 代码版本差异分析
 
-## 5. 代码版本差异分析
-
-### 5.1 `ubseUrmaDevUnpack` 函数版本对比
+### 4.1 `ubseUrmaDevUnpack` 函数版本对比
 
 #### 之前版本
 
@@ -207,19 +202,17 @@ func ubseUrmaDevUnpack(response []byte) ([]Device, error) {
 }
 ```
 
-### 5.2 主要差异
+### 4.2 主要差异
 
-| 差异点 | 之前版本 | 当前版本 |
-|--------|---------|---------|
-| 变量声明 | 在循环外声明 `name` 和 `err` 变量 | 在循环内部使用短变量声明 `:=` |
+| 差异点   | 之前版本                      | 当前版本                        |
+|---------|-----------------------------|-------------------------------|
+| 变量声明  | 在循环外声明 `name` 和 `err` 变量  | 在循环内部使用短变量声明 `:=`           |
 | 变量作用域 | `name` 和 `err` 变量作用域为整个函数 | `name` 和 `err` 变量作用域仅限于循环内部 |
-| 赋值方式 | 使用 `=` 赋值 | 使用 `:=` 声明并赋值 |
+| 赋值方式  | 使用 `=` 赋值                 | 使用 `:=` 声明并赋值               |
 
-### 5.3 技术分析
+### 4.3 技术分析
 
-
-
-### 5.4 变量遮蔽问题分析
+### 4.4 变量遮蔽问题分析
 
 **关键问题**：在循环中使用 `:=` 声明变量会导致 `response` 变量被遮蔽（shadowing），从而无法正常往后偏移，循环 count 次只解析第一次的数据。
 
@@ -239,6 +232,7 @@ func ubseUrmaDevUnpack(response []byte) ([]Device, error) {
      - 函数返回新的 `response` 值
      - 使用 `:=` 将返回值赋给新的局部变量 `name, response, err`
      - 此时，循环内部的 `response` 是新值，但函数参数的 `response` 仍然是原始值
+   
    - **第二次循环**：
      - 循环进入下一次迭代，此时使用的 `response` 是函数参数的原始值（因为循环内部的 `response` 变量已经超出作用域）
      - 再次调用 `unpackString(response, UbsUrmaNameMax)`，再次解析相同的数据
@@ -247,7 +241,7 @@ func ubseUrmaDevUnpack(response []byte) ([]Device, error) {
 3. **代码执行示例**：
    ```go
    // 初始状态: response = [设备1数据][设备2数据][设备3数据]
-   
+
    for i := 0; i < 3; i++ {
        // 第一次循环: 使用的是函数参数的 response = [设备1数据][设备2数据][设备3数据]
        name, response, err := unpackString(response, UbsUrmaNameMax)
@@ -256,7 +250,7 @@ func ubseUrmaDevUnpack(response []byte) ([]Device, error) {
        
        // 处理设备1数据...
    }
-   
+
    // 第二次循环:
    // 循环内部的 response 变量已经超出作用域
    // 使用的是函数参数的 response = [设备1数据][设备2数据][设备3数据]
@@ -304,7 +298,7 @@ func ubseUrmaDevUnpack(response []byte) ([]Device, error) {
        // ...
        return device, response, nil
    }
-   
+
    for i := uint32(0); i < count; i++ {
        device, remaining, err := parseDeviceInfo(response, i)
        if err != nil {
@@ -315,13 +309,12 @@ func ubseUrmaDevUnpack(response []byte) ([]Device, error) {
    }
    ```
 
-### 5.5 性能影响
-
+### 4.5 性能影响
 - **编译时**：当前版本可能会有微小的编译时间增加（可忽略）
 - **运行时**：在 Go 编译器的优化下，两种版本的运行时性能差异可忽略不计
 - **内存使用**：两种版本的内存使用几乎相同
 
-### 5.6 最佳实践建议
+### 4.6 最佳实践建议
 
 当前版本的代码风格更符合 Go 语言的最佳实践：
 
@@ -330,7 +323,7 @@ func ubseUrmaDevUnpack(response []byte) ([]Device, error) {
 3. **代码简洁性**：避免不必要的循环外变量声明
 4. **可读性**：变量在使用前声明，使代码逻辑更清晰
 
-## 6. 总结
+## 5. 总结
 
 这段代码实现了 UBS URMA 设备管理的核心功能，包括：
 
