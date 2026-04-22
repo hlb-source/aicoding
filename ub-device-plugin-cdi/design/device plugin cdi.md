@@ -2,7 +2,7 @@
 
 ## 1. 摘要
 
-本 RFC 文档描述了一种基于 Kubernetes Device Plugin 和 Container Device Interface (CDI) 机制的 RDMA 网卡直通解决方案。该方案解决了物理机重启后设备名称变化导致容器无法正常访问设备的问题，通过设备唯一标识和稳定名称映射确保设备访问的可靠性。
+本 RFC 文档描述了一种基于 Kubernetes Device Plugin 和 Container Device Interface (CDI) 机制的设备直通解决方案。该方案解决了物理机重启后设备名称变化导致容器无法正常访问设备的问题，通过设备唯一标识和稳定名称映射确保设备访问的可靠性。
 
 ## 2. 状态
 
