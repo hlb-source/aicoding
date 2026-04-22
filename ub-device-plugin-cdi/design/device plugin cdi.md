@@ -29,7 +29,7 @@
 本解决方案通过k8s高版本的 Device Plugin + CDI 机制解决设备名称变更问题，核心设计思路如下：
 
 1. **设备信息解耦**：
-   - 将真实的设备信息（路径 + 名称）与 kubelet 解耦
+   - 将真实的设备信息（路径 + 名称）与 kubelet 解耦，kubelet_internal_checkpoint文件中不在存储设备信息
    - Device Plugin 不直接返回设备路径，而是返回逻辑标识
    - 通过 CDI 配置文件管理实际设备路径
 
@@ -179,20 +179,9 @@ CDI 配置文件的生命周期管理是确保设备配置一致性和可靠性�
    - 使用原子操作更新 CDI 配置（先写临时文件，再重命名）
 
 
-### 6.4 顺序保证机制
+### 6.4 业务流程
 
-1. **DaemonSet 启动顺序**：
-   - 设备插件以 DaemonSet 部署，配置 `priorityClassName: system-node-critical`
-   - 确保设备插件在节点启动时优先于普通容器启动
-   - 使用 `init containers` 确保设备插件完全就绪后才启动主容器
-
-2. **依赖关系配置**：
-   - 设备插件 DaemonSet 设置 `hostNetwork: true` 和 `hostPID: true`
-   - 容器的 `affinity` 规则确保只调度到设备插件运行的节点
-   - 使用 `podAntiAffinity` 避免设备资源冲突
-
-
-3. **设备插件启动流程**：
+1. **设备插件启动流程**：
    - 节点启动 → kubelet 启动 → DaemonSet 调度
    - 设备插件初始化 → 扫描设备 → 生成 CDI 配置到 `/var/run/cdi`
    - 标记为就绪 → 允许容器调度
