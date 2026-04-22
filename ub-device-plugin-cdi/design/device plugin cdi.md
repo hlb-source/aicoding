@@ -1,4 +1,4 @@
-# RFC: Kubernetes RDMA 网卡直通 Device Plugin + CDI 解决方案
+# RFC: Kubernetes 设备直通 Device Plugin + CDI 解决方案
 
 ## 1. 摘要
 
