@@ -42,6 +42,7 @@
     ],
   },
 }
+```
 AllocResp是Allocate接口Response的base64编码的，/dev/uburma/udma1 /dev/uburma/udma1;/dev/uburma/udma31 /dev/uburma/udma31;/dev/uburma/binding_dev_1 /dev/uburma/udma1
 
 **物理机重启容器恢复的详细过程**：
