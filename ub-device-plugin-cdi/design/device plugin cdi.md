@@ -129,7 +129,7 @@ CDI 配置文件的生命周期管理是确保设备配置一致性和可靠性�
   - 生成包含设备唯一标识、稳定名称、设备路径等信息的 CDI 配置文件
   - 写入到 `/var/run/cdi` 目录
   - 设置正确的文件权限（通常为 644）
-- **示例**：`/var/run/cdi/ub-rdma-mlx5-0.yaml`
+- **示例**：`/var/run/cdi/ub-net-device-udema_1.yaml`
 
 #### 5.3.2 加载阶段
 
@@ -150,10 +150,9 @@ CDI 配置文件的生命周期管理是确保设备配置一致性和可靠性�
   - kubelet 通过 Device Plugin 分配设备
   - **容器关联 CDI 文件**：
     1. **设备分配响应**：Device Plugin 在 Allocate 响应中返回 CDI 设备引用
-    2. **Pod 注解**：通过 `cdi.k8s.io/device` 注解指定 CDI 设备
-    3. **containerd 处理**：containerd 解析 Pod 规范中的 CDI 引用
-    4. **CDI 配置查找**：根据 `kind` 和 `name` 查找对应的 CDI 配置文件
-    5. **配置应用**：将 CDI 配置中的设备、环境变量、挂载点等应用到容器
+    2. **containerd 处理**：containerd 解析 Pod 规范中的 CDI 引用
+    3. **CDI 配置查找**：根据 `kind` 和 `name` 查找对应的 CDI 配置文件
+    4. **配置应用**：将 CDI 配置中的设备、环境变量、挂载点等应用到容器
   - containerd 根据 CDI 配置注入设备
   - 应用生命周期钩子
   - 容器获得设备访问权限
@@ -201,7 +200,7 @@ CDI 配置文件的生命周期管理是确保设备配置一致性和可靠性�
    - CDI 配置文件存在于 `/var/run/cdi` 目录
    - Pod 规范中包含 CDI 设备引用
 2. **物理机重启**：
-   - 设备枚举顺序可能变化，设备路径可能改变（如 `/dev/infiniband/mlx5_0` → `/dev/infiniband/mlx5_1`）
+   - 设备枚举顺序可能变化，设备路径可能改变（如 `/dev/uburma/udma1` → `/dev/uburma/udma2`）
    - `/var/run/cdi` 目录被清空，CDI 配置文件自动删除
 3. **容器重启**：
    - 不会重新执行 Allocate 分配过程
@@ -261,7 +260,7 @@ ctr cdi list
 func generateCDIConfig(devices map[string]*Device) error {
     spec := CDISpec{
         CDIVersion: "0.5.0",
-        Kind:       "ub.com/rdma",
+        Kind:       " unifiedbus.com/ub_net_device",
         Devices:    make([]DeviceEntry, 0),
     }
 
@@ -292,7 +291,7 @@ func Allocate(req *v1beta1.AllocateRequest) (*v1beta1.AllocateResponse, error) {
         resp.ContainerResponses = append(resp.ContainerResponses, &v1beta1.ContainerAllocateResponse{
             CDIDevices: []*v1beta1.CDIDevice{
                 {
-                    Kind: "ub.com/rdma",
+                    Kind: " unifiedbus.com/ub_net_device",
                     Name: id,
                 },
             },
@@ -409,7 +408,7 @@ func GetDevicePathFromCDI(kind, name string) (string, error) {
 
 1. **CDI 设备引用解析**：
    - 从 `CDIDevices` 字段中提取 `kind` 和 `name` 信息
-   - 格式为：`{kind: "ub.com/rdma", name: "mlx5_0"}`
+   - 格式为：`{kind: " unifiedbus.com/ub_net_device", name: "urma_1"}`
 2. **CDI 配置目录扫描**：
    - 扫描默认的 CDI 配置目录（`/var/run/cdi`）
    - 查找所有 `.yaml` 或 `.json` 格式的配置文件
@@ -421,18 +420,18 @@ func GetDevicePathFromCDI(kind, name string) (string, error) {
    - 找到 `name` 字段与 `CDIDevices` 中 `name` 匹配的设备配置
 5. **设备路径获取**：
    - 从匹配的设备配置中提取 `deviceNodes[].path` 字段
-   - 获得实际的设备路径（如 `/dev/infiniband/mlx5_0`）
+   - 获得实际的设备路径（如 `/dev/uburma/udma1`）
 6. **设备挂载**：
    - kubelet 使用获取到的设备路径进行挂载
    - 容器启动时使用该设备路径
 
 **示例流程**：
 
-1. 从 `CDIDevices` 获取：`kind: "ub.com/rdma", name: "mlx5_0"`
+1. 从 `CDIDevices` 获取：`kind: " unifiedbus.com/ub_net_device", name: "udma_1"`
 2. 扫描 `/var/run/cdi` 目录，找到 `ub-rdma.yaml` 文件
-3. 解析文件，找到 `kind: "ub.com/rdma"` 匹配
-4. 在 `devices` 数组中找到 `name: "mlx5_0"` 的配置
-5. 提取设备路径：`/dev/infiniband/mlx5_0`
+3. 解析文件，找到 `kind: " unifiedbus.com/ub_net_device"` 匹配
+4. 在 `devices` 数组中找到 `name: "udma_1"` 的配置
+5. 提取设备路径：`/dev/uburma/udma1`
 6. 挂载该设备到容器
 
 通过这种方式，即使设备路径发生变化，只要 CDI 配置文件及时更新，容器仍然可以通过稳定的逻辑标识找到正确的设备路径。
@@ -451,8 +450,8 @@ spec:
     command: ["/bin/bash", "-c", "sleep infinity"]
     resources:
       requests:
-        ub.com/rdma: 1
+         unifiedbus.com/ub_net_device: 1
       limits:
-        ub.com/rdma: 1
+         unifiedbus.com/ub_net_device: 1
 ```
 
