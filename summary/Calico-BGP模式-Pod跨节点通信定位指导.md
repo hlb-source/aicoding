@@ -152,10 +152,10 @@ default via 192.168.1.1 dev eth0
 - 匹配默认路由，下一跳是 192.168.1.1
 - 数据包通过 veth pair 发送到主机侧
 
-#### 步骤 2：数据包到达 veth pair
+#### 步骤 2：数据包到达 veth pair 并经过 iptables-legacy PREROUTING 链处理
 
 ```
-位置：veth pair (calixxx)
+位置：veth pair (calixxx) → iptables-legacy PREROUTING 链
 数据包：
 ┌─────────────────────────────────┐
 │ IP 头                            │
@@ -164,7 +164,19 @@ default via 192.168.1.1 dev eth0
 └─────────────────────────────────┘
 ```
 
-**动作**：数据包通过 veth pair 到达主机网络命名空间
+**动作**：
+1. 数据包通过 veth pair 到达主机网络命名空间
+2. 进入 iptables-legacy PREROUTING 链
+3. **iptables-legacy 查表过程**：
+   - 从 PREROUTING 链的第一条规则开始匹配
+   - 匹配 `cali-PREROUTING` 链（所有流量）
+   - 进入 `cali-PREROUTING` 链内部规则匹配：
+     - 第一条规则：`ACCEPT all -- 0.0.0.0/0 0.0.0.0/0 mark match 0x10000/0x10000`
+       - 检查数据包是否带有 0x10000 标记，不匹配
+     - 第二条规则：`DNAT all -- 0.0.0.0/0 192.168.1.0/26 to:192.168.1.0/26`
+       - 检查目标地址是否在 192.168.1.0/26 网段，不匹配
+   - 链遍历结束，返回 PREROUTING 链
+4. 继续路由查找
 
 #### 步骤 3：Node1 路由表查找
 
@@ -188,7 +200,52 @@ default via 192.168.1.1 dev eth0
 出接口：eth0
 ```
 
-#### 步骤 4：ARP 解析获取 MAC 地址
+#### 步骤 4：iptables-legacy FORWARD 链处理
+
+```
+位置：Node1 主机网络命名空间 → iptables-legacy FORWARD 链
+数据包：
+┌─────────────────────────────────┐
+│ IP 头                            │
+│   Source IP: 192.168.1.10      │
+│   Destination IP: 192.168.2.10 │
+└─────────────────────────────────┘
+```
+
+**动作**：
+1. 数据包进入 iptables-legacy FORWARD 链
+2. **iptables-legacy 查表过程**：
+   - 从 FORWARD 链的第一条规则开始匹配
+   - 第一条规则：`cali-FORWARD all -- anywhere anywhere`
+     - 进入 `cali-FORWARD` 链内部规则匹配：
+       - 第一条规则：`MARK all -- anywhere anywhere MARK and 0xfff1ffff`
+         - 执行标记操作
+       - 第二条规则：`cali-from-hep-forward all -- anywhere anywhere mark match 0x0/0x10000`
+         - 不匹配（标记已设置）
+       - 第三条规则：`cali-from-wl-dispatch all -- anywhere anywhere`
+         - 进入 `cali-from-wl-dispatch` 链：
+           - 匹配到对应的 Pod 接口链（如 `cali-fw-cali1edcac9f343`）
+           - 在 Pod 接口链中：
+             - `ACCEPT all -- anywhere anywhere ctstate RELATED,ESTABLISHED`（不匹配新连接）
+             - `DROP all -- anywhere anywhere ctstate INVALID`（不匹配）
+             - `MARK all -- anywhere anywhere MARK and 0xfffeffff`（执行标记操作）
+             - `DROP udp -- anywhere anywhere multiport dports vxlan`（不匹配）
+             - `DROP ipv4 -- anywhere anywhere`（不匹配）
+             - `cali-pro-kns.default all -- anywhere anywhere`（进入命名空间策略链）
+             - `RETURN all -- anywhere anywhere`（返回上一级链）
+       - 第四条规则：`cali-to-wl-dispatch all -- anywhere anywhere`
+         - 进入 `cali-to-wl-dispatch` 链，类似处理
+       - 第五条规则：`cali-to-hep-forward all -- anywhere anywhere`
+         - 不匹配
+       - 第六条规则：`cali-cidr-block all -- anywhere anywhere`
+         - 不匹配
+     - `cali-FORWARD` 链遍历结束，返回 FORWARD 链
+   - 第二条规则：`ACCEPT all -- anywhere anywhere mark match 0x10000/0x10000`
+     - 由于数据包已被标记，匹配成功，执行 ACCEPT 动作
+   - 链遍历结束，允许数据包转发
+3. 继续转发到 eth0 接口
+
+#### 步骤 5：ARP 解析获取 MAC 地址
 
 ```
 位置：Node1 ARP 表
@@ -223,7 +280,7 @@ ip neigh show
 └─────────────────────────────────────────┘
 ```
 
-#### 步骤 5：通过物理网络传输
+#### 步骤 6：通过物理网络传输
 
 ```
 位置：物理网络交换机
@@ -252,7 +309,7 @@ ip neigh show
 
 **注意**：数据包直接使用原始 IP 地址，无任何封装
 
-#### 步骤 6：Node2 接收数据包
+#### 步骤 7：Node2 接收数据包
 
 ```
 位置：Node2 网络栈
@@ -265,7 +322,7 @@ ip neigh show
 3. 识别目标 IP 是 192.168.2.10（不是本机 eth0 的 IP 10.0.0.20）
 4. 触发本地路由表查找
 
-#### 步骤 7：Node2 路由表查找
+#### 步骤 8：Node2 路由表查找
 
 ```
 位置：Node2 主机网络命名空间
@@ -287,7 +344,7 @@ ip neigh show
 交付方式：直接交付（无需路由到其他设备）
 ```
 
-#### 步骤 8：通过 veth pair 到达 Pod B
+#### 步骤 9：通过 veth pair 到达 Pod B
 
 ```
 位置：veth pair (caliyyy)
@@ -301,7 +358,7 @@ ip neigh show
 
 **动作**：数据包通过 veth pair 进入 Pod B
 
-#### 步骤 9：Pod B 接收数据包
+#### 步骤 10：Pod B 接收数据包
 
 ```
 位置：Pod B 内部
@@ -317,12 +374,41 @@ ip neigh show
 
 ## 5. 返回路径 (Pod B → Pod A)
 
-返回路径完全对称：
+返回路径完全对称，包含 iptables-legacy 处理：
 
 ```
-Pod B → veth pair → Node2 路由查找 → ARP 解析 →
-物理网络传输 → Node1 路由查找 → veth pair → Pod A
+Pod B → veth pair → Node2 iptables-legacy 处理 → Node2 路由查找 → ARP 解析 →
+物理网络传输 → Node1 iptables-legacy 处理 → Node1 路由查找 → veth pair → Pod A
 ```
+
+**详细返回流程**：
+
+1. **Pod B 发出数据包** → veth pair → Node2 网络命名空间
+2. **Node2 iptables-legacy 处理**：
+   - **PREROUTING 链**：
+     - 进入 iptables-legacy PREROUTING 链
+     - 匹配 `cali-PREROUTING` 链
+     - 检查 mark 标记和目标地址，无匹配
+   - **FORWARD 链**：
+     - 进入 iptables-legacy FORWARD 链
+     - 匹配 `cali-FORWARD` 链
+     - 经过 `cali-failsafe-in` 和 `cali-failsafe-out` 检查
+     - 执行默认 ACCEPT 动作
+3. **Node2 路由表查找** → 匹配到 Node1 Pod 网段路由
+4. **ARP 解析** → 获取 Node1 MAC 地址
+5. **物理网络传输** → 到达 Node1
+6. **Node1 iptables-legacy 处理**：
+   - **PREROUTING 链**：
+     - 进入 iptables-legacy PREROUTING 链
+     - 匹配 `cali-PREROUTING` 链
+     - 检查 mark 标记和目标地址，无匹配
+   - **FORWARD 链**：
+     - 进入 iptables-legacy FORWARD 链
+     - 匹配 `cali-FORWARD` 链
+     - 经过 `cali-failsafe-in` 和 `cali-failsafe-out` 检查
+     - 执行默认 ACCEPT 动作
+7. **Node1 路由表查找** → 匹配到本地 Pod 网段路由
+8. **veth pair** → Pod A
 
 **关键路由表**：
 ```bash
@@ -456,6 +542,30 @@ mtr <目标IP>
 # 测试带宽
 iperf3 -s  # 在 Node2 上启动服务器
 iperf3 -c 10.0.0.20  # 在 Node1 上启动客户端
+```
+
+### 6.7 iptables-legacy 命令
+
+```bash
+# 查看 filter 表中的 Calico 规则
+iptables-legacy -t filter -L cali-FORWARD -n
+
+# 查看 nat 表中的 Calico 规则
+iptables-legacy -t nat -L cali-PREROUTING -n
+
+# 查看所有 Calico 相关规则
+iptables-legacy -t filter -L -n | grep cali
+iptables-legacy -t nat -L -n | grep cali
+iptables-legacy -t mangle -L -n | grep cali
+
+# 查看规则详细信息（包括计数器）
+iptables-legacy -t filter -L cali-FORWARD -n -v
+
+# 保存 iptables 规则
+iptables-legacy-save > iptables-rules.txt
+
+# 恢复 iptables 规则
+iptables-legacy-restore < iptables-rules.txt
 ```
 
 ## 7. 报文转发核心要点
