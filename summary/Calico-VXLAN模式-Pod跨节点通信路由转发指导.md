@@ -14,7 +14,17 @@ Calico VXLAN 模式通过 UDP 封装实现 Pod 间的跨节点通信，适用于
 | 性能 | 中等（有封装开销） |
 | 依赖 | 节点间二层互通 |
 
-### 1.2 VXLAN 数据包格式
+### 1.2 与 BGP 模式对比
+
+| 对比维度 | VXLAN 模式 | BGP 模式 |
+|---------|-----------|---------|
+| 网络要求 | 仅需节点间二层互通 | 需要节点间三层 IP 可达 |
+| 封装开销 | 有（约 50 字节） | 无 |
+| MTU 配置 | 需调小 Pod 网卡 MTU（通常 1450） | 保持标准 1500 |
+| 路由传播 | 依赖 Calico Node 组件同步路由 | 依赖 BGP 协议（如 Bird） |
+| 适用场景 | 云环境、跨云、网络受限场景 | 裸金属、数据中心、高性能要求场景 |
+
+### 1.3 VXLAN 数据包格式
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -58,7 +68,7 @@ Calico VXLAN 模式通过 UDP 封装实现 Pod 间的跨节点通信，适用于
 │       ▼                                                                 │
 │  ┌─────────────────────────────────────────────────────────────┐      │
 │  │                    Node1 路由表查找                          │      │
-│  │  192.168.2.0/26 dev vxlan.calico via 10.0.0.20 onlink         │      │
+│  │  192.168.2.0/26 via 192.168.2.0 dev vxlan.calico scope link onlink  │
 │  │  → 匹配到 192.168.2.0/26 网段，下一跳是 Node2 IP        │      │
 │  └─────────────────────────────────────────────────────────────┘      │
 │       │                                                                 │
@@ -166,6 +176,10 @@ vxlan.calico: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNK
     vxlan id 4096 local 10.0.0.10 dev eth0 srcport 0 0 dstport 4789 nolearning ageing 300 noudpcsum noudp6zerocsumtx noudp6zerocsumrx addrgenmode eui64
 ```
 
+**FDB 表项说明**：
+- `00:00:00:00:00:00` 是全零 MAC 地址，这是 Calico VXLAN 的特殊用法。由于 VXLAN 在此模式下工作于 L3 路由场景，不需要学习具体的目标 MAC 地址，内核会根据路由表查找目标 Pod IP 所在的节点，并通过 FDB 中的全零表项将流量转发到对应的 VTEP IP。
+- `dst 10.0.0.20` 表示对端节点的 VTEP IP，`self permanent` 表示该条目由系统静态配置，不会老化。
+
 **VTEP IP 信息**：
 - **本地 VTEP IP**：`local 10.0.0.10`（Node1 的物理网卡 IP）
 - **对端 VTEP IP**：转发表中的 `dst 10.0.0.20`（Node2 的物理网卡 IP）和 `dst 10.0.0.30`（Node3 的物理网卡 IP）
@@ -226,17 +240,10 @@ vxlan.calico: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNK
 | `src` | 源 IP 地址 | 发送数据包时使用的源地址 |
 | `onlink` | 链路层直接交付 | 不经过网关，直接通过链路层发送 |
 
-### 3.8 VXLAN 接口
+### 3.8 VXLAN 接口参数详解
 
 ```bash
-# 查看 VXLAN 接口
-ip link show vxlan.calico
-
-# 输出示例：
-vxlan.calico: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNKNOWN mode DEFAULT group default
-    link/ether aa:bb:cc:dd:ee:ff brd ff:ff:ff:ff:ff:ff
-
-# 查看 VXLAN 配置
+# 查看 VXLAN 接口及详细配置
 ip -d link show vxlan.calico
 
 # 输出示例：
@@ -244,6 +251,12 @@ vxlan.calico: <BROADCAST,MULTICAST,UP,LOWER_UP> mtu 1450 qdisc noqueue state UNK
     link/ether aa:bb:cc:dd:ee:ff brd ff:ff:ff:ff:ff:ff promiscuity 0 minmtu 68 maxmtu 65535
     vxlan id 4096 local 10.0.0.10 dev eth0 srcport 0 0 dstport 4789 nolearning ageing 300 noudpcsum noudp6zerocsumtx noudp6zerocsumrx addrgenmode eui64 numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535
 ```
+
+**关键参数说明**：
+- `mtu 1450`：VXLAN 封装会产生约 50 字节开销（外层 Ethernet 14B + IP 20B + UDP 8B + VXLAN 8B），因此 Pod MTU 需从标准 1500 降至 1450，避免分片。
+- `srcport 0 0`：表示启用随机源端口范围。内核会在发送 VXLAN 包时随机选择 UDP 源端口，这对于 ECMP（等价多路径路由）负载均衡至关重要，可确保流量哈希到不同路径。
+- `dstport 4789`：VXLAN 标准目标端口（IANA 分配）。
+- `nolearning`：禁止 FDB 自学习，由 Calico 控制器静态下发路由。
 
 ### 3.9 iptables 规则分析
 
@@ -259,7 +272,7 @@ target     prot opt source               destination
 cali-FORWARD  all  --  0.0.0.0/0            0.0.0.0/0            /* calico: forwarding policy */
 ```
 
-**说明**：所有转发的数据包都会经过 Calico 的 `cali-FORWARD` 链处理。
+**说明**：所有转发的数据包都会经过 Calico 的 `cali-FORWARD` 链处理。实际环境中，Calico 会为每个 veth pair 生成独立的入站/出站链（如 `cali-tw-calixxx`、`cali-from-wl-dispatch`），并注入大量 NetworkPolicy 规则，此处为简化示例。
 
 ```bash
 # 查看 Calico 转发链规则
@@ -283,7 +296,7 @@ iptables -t nat -L cali-PREROUTING -n
 Chain cali-PREROUTING (1 references)
 target     prot opt source               destination
 ACCEPT     all  --  0.0.0.0/0            0.0.0.0/0            /* cali: preserve incoming mark */ mark match 0x10000/0x10000
-DNAT       all  --  0.0.0.0/0            192.168.1.0/26       /* cali: DNAT to workload */ to:192.168.1.0/26
+# 注：实际 DNAT 规则通常用于 NodePort/Service 场景，此处省略复杂规则
 ```
 
 #### 3.9.3 iptables 转发流程
@@ -353,10 +366,11 @@ default via 192.168.1.1 dev eth0
 
 **动作**：
 1. 数据包通过 veth pair 到达主机网络命名空间
-2. 进入 iptables PREROUTING 链
-3. 匹配 `cali-PREROUTING` 规则
-4. 由于源 IP 是 Pod IP，标记为 0x10000，跳过 DNAT 处理
-5. 继续路由查找
+2. **ARP 解析**：Pod 发出 ARP 请求解析网关 192.168.1.1 的 MAC 地址，`vxlan.calico` 接口响应并返回其 MAC 地址，后续数据包封装以太网帧时以此为目的 MAC
+3. 进入 iptables PREROUTING 链
+4. 匹配 `cali-PREROUTING` 规则
+5. 由于源 IP 是 Pod IP，标记为 0x10000，跳过 DNAT 处理
+6. 继续路由查找
 
 #### 步骤 3：Node1 路由表查找
 
@@ -438,7 +452,7 @@ default via 192.168.1.1 dev eth0
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
-#### 步骤 5：通过物理网络传输
+#### 步骤 6：通过物理网络传输
 
 ```
 位置：物理网络交换机
@@ -452,9 +466,9 @@ default via 192.168.1.1 dev eth0
 
 **数据包**：VXLAN 封装的完整数据包
 
-**备注**：如果家里测试环境没有 L3 Switch，两个节点处于同一二层网络（通过普通交换机或直连），数据包会通过二层交换机转发，无需三层路由。此时交换机只做 MAC 地址学习，不修改 IP 报文。
+**备注**：测试环境中若无三层交换机，两个节点通常处于同一二层网络（通过普通交换机或直连），数据包会通过二层交换机转发，无需三层路由。此时交换机仅进行 MAC 地址学习，不修改 IP 报文。
 
-#### 步骤 6：Node2 接收并解封装
+#### 步骤 7：Node2 接收并解封装
 
 ```
 位置：Node2 网络栈
@@ -477,7 +491,7 @@ default via 192.168.1.1 dev eth0
 └─────────────────────────────────┘
 ```
 
-#### 步骤 7：Node2 路由表查找
+#### 步骤 8：Node2 路由表查找
 
 ```
 位置：Node2 主机网络命名空间
@@ -499,7 +513,7 @@ default via 192.168.1.1 dev eth0
 交付方式：直接交付（无需路由到其他设备）
 ```
 
-#### 步骤 8：通过 veth pair 到达 Pod B
+#### 步骤 9：通过 veth pair 到达 Pod B
 
 ```
 位置：veth pair (caliyyy)
@@ -513,7 +527,7 @@ default via 192.168.1.1 dev eth0
 
 **动作**：数据包通过 veth pair 进入 Pod B
 
-#### 步骤 9：Pod B 接收数据包
+#### 步骤 10：Pod B 接收数据包
 
 ```
 位置：Pod B 内部
@@ -529,18 +543,43 @@ default via 192.168.1.1 dev eth0
 
 ## 5. 返回路径 (Pod B → Pod A)
 
-返回路径完全对称：
+返回路径与正向路径完全对称，处理逻辑一致：
 
 ```
-Pod B → veth pair → Node2 路由查找 → VXLAN 封装 →
-物理网络传输 → Node1 解封装 → Node1 路由查找 → veth pair → Pod A
+Pod B (192.168.2.10)
+  │
+  │ 响应数据包: Src=192.168.2.10, Dst=192.168.1.10
+  ▼
+veth pair (caliyyy)
+  │
+  ▼
+Node2 路由查找
+  │ 匹配路由: 192.168.1.0/26 via 192.168.1.0 dev vxlan.calico scope link onlink
+  ▼
+VXLAN 封装
+  │ 外层 Src=10.0.0.20, Dst=10.0.0.10, VNI=4096
+  ▼
+物理网络传输
+  │
+  ▼
+Node1 接收并解封装
+  │
+  ▼
+Node1 路由查找
+  │ 匹配路由: 192.168.1.0/26 dev vxlan.calico proto kernel scope link
+  ▼
+veth pair (calixxx) → Pod A (192.168.1.10)
 ```
 
 **关键路由表**：
 ```bash
 # Node2 到 Node1 的路由
-192.168.1.0/26 dev vxlan.calico scope link onlink
+192.168.1.0/26 via 192.168.1.0 dev vxlan.calico scope link onlink
 ```
+
+**注意事项**：
+- 返回路径同样会经过 Node2 的 `cali-FORWARD` 链进行 NetworkPolicy 检查
+- 若配置了非对称路由或策略路由，返回路径可能与正向路径不同，需通过 `conntrack` 跟踪连接状态
 
 ## 6. 关键命令详解
 
@@ -606,6 +645,7 @@ IP 192.168.1.10 > 192.168.2.10: ICMP echo request, id 1234, seq 1, length 64
 tcpdump -i vxlan.calico -n
 
 # 示例输出：
+10:00:01.000000 IP 192.168.1.10 > 192.168.2.10: ICMP echo request, id 1234, seq 1, length 64
 
 ### 6.5 iptables 命令
 
@@ -794,6 +834,40 @@ tcpdump -i eth0 udp port 4789 -n -c 10
 echo "=== Calico 状态 ==="
 calicoctl node status
 ```
+
+### 8.4 故障排查案例：Pod 跨节点通信不通
+
+**现象**：Pod A (Node1) 无法 ping 通 Pod B (Node2)
+
+**排查步骤**：
+1. **检查路由**：
+   ```bash
+   ip route get 192.168.2.10
+   # 预期输出: 192.168.2.10 dev vxlan.calico scope link onlink
+   # 若无输出或指向错误接口，说明路由未下发
+   ```
+2. **检查 FDB 表**：
+   ```bash
+   bridge fdb show dev vxlan.calico | grep 10.0.0.20
+   # 预期输出: 00:00:00:00:00:00 dev vxlan.calico dst 10.0.0.20 self permanent
+   # 若缺失，说明 Calico Node 组件未正确同步对端节点信息
+   ```
+3. **检查防火墙/安全组**：
+   ```bash
+   # 确认节点间 UDP 4789 端口互通
+   nc -zvu 10.0.0.20 4789
+   ```
+4. **抓包定位丢包点**：
+   ```bash
+   # 在 Node1 抓包，确认是否发出 VXLAN 包
+   tcpdump -i eth0 udp port 4789 and host 10.0.0.20 -n
+   # 在 Node2 抓包，确认是否收到并解封装
+   tcpdump -i vxlan.calico host 192.168.1.10 -n
+   ```
+5. **常见原因**：
+   - 云厂商安全组未放行 UDP 4789
+   - Calico Node Pod 崩溃或网络策略误拦截
+   - MTU 不匹配导致大包丢弃（可尝试 `ping -s 1400` 测试）
 
 
 ## 9. 最佳实践
