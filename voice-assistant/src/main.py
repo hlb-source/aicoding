@@ -199,6 +199,7 @@ class VoiceAssistant:
             duration = self.config.get('audio', {}).get('segment_duration', 5)
         
         process_start_time = datetime.now()
+        audio_file = None
         
         try:
             self.logger.info("="*60)
@@ -234,7 +235,6 @@ class VoiceAssistant:
                     status="无语音"
                 )
                 
-                self.audio_capture.cleanup(audio_file)
                 return None
             
             self.logger.info("="*60)
@@ -263,7 +263,6 @@ class VoiceAssistant:
                 self.logger.info(f"  原始文本: {text}")
                 self.logger.info("="*60)
                 
-                self.audio_capture.cleanup(audio_file)
                 return {
                     'text': text,
                     'detected': False,
@@ -289,7 +288,6 @@ class VoiceAssistant:
                 self.logger.warning(f"  失败原因: 命令验证失败")
                 self.logger.warning("="*60)
                 
-                self.audio_capture.cleanup(audio_file)
                 return {
                     'text': text,
                     'detected': True,
@@ -306,8 +304,6 @@ class VoiceAssistant:
             
             log_file = self.config.get('logging', {}).get('command_log', 'logs/commands.log')
             result = self.opencode_executor.execute_and_log(command, log_file=log_file)
-            
-            self.audio_capture.cleanup(audio_file)
             
             process_end_time = datetime.now()
             process_duration = (process_end_time - process_start_time).total_seconds()
@@ -342,6 +338,11 @@ class VoiceAssistant:
                 'executed': False,
                 'error': str(e)
             }
+        
+        finally:
+            if audio_file:
+                self.audio_capture.cleanup(audio_file)
+                self.logger.info("【临时文件清理】确保临时音频文件已删除")
     
     def run(self) -> None:
         """运行主循环"""
