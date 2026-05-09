@@ -86,7 +86,11 @@ class OSAdapter:
         Returns:
             文件路径
         """
-        return tempfile.mktemp(suffix=suffix)
+        import tempfile
+        temp_file = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)
+        temp_path = temp_file.name
+        temp_file.close()
+        return temp_path
     
     def write_file(
         self,

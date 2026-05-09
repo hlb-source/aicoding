@@ -81,39 +81,50 @@ class SpeechRecognizer:
         Returns:
             转录结果字典
         """
+        import traceback
+        
         if not self.os_adapter.file_exists(audio_path):
             raise FileNotFoundError(f"音频文件不存在: {audio_path}")
         
         lang = language or self.language
         
         self.logger.info(f"开始转录音频: {audio_path}")
+        self.logger.info(f"音频文件存在: {self.os_adapter.file_exists(audio_path)}")
+        self.logger.info(f"音频文件大小: {self.os_adapter.get_file_size(audio_path)}")
         
-        result = self.whisper_adapter.transcribe(
-            model=self.model,
-            audio_path=audio_path,
-            language=lang,
-            temperature=self.temperature,
-            initial_prompt=self.initial_prompt
-        )
-        
-        text = result.get('text', '')
-        detected_lang = result.get('language', 'unknown')
-        segments = result.get('segments', [])
-        
-        avg_confidence = 0.0
-        if segments:
-            confidences = [seg.get('avg_logprob', 0) for seg in segments]
-            avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
-        
-        self.logger.info(f"转录完成: {text[:50]}...")
-        self.logger.info(f"语言: {detected_lang}, 置信度: {avg_confidence:.2f}")
-        
-        return {
-            'text': text,
-            'language': detected_lang,
-            'segments': segments,
-            'confidence': avg_confidence
-        }
+        try:
+            result = self.whisper_adapter.transcribe(
+                model=self.model,
+                audio_path=audio_path,
+                language=lang,
+                temperature=self.temperature,
+                initial_prompt=self.initial_prompt
+            )
+            
+            text = result.get('text', '')
+            detected_lang = result.get('language', 'unknown')
+            segments = result.get('segments', [])
+            
+            avg_confidence = 0.0
+            if segments:
+                confidences = [seg.get('avg_logprob', 0) for seg in segments]
+                avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
+            
+            self.logger.info(f"转录完成: {text[:50]}...")
+            self.logger.info(f"语言: {detected_lang}, 置信度: {avg_confidence:.2f}")
+            
+            return {
+                'text': text,
+                'language': detected_lang,
+                'segments': segments,
+                'confidence': avg_confidence
+            }
+            
+        except Exception as e:
+            error_traceback = traceback.format_exc()
+            self.logger.error(f"转录异常: {e}")
+            self.logger.error(f"错误堆栈:\n{error_traceback}")
+            raise RuntimeError(f"转录失败: {e}\n{error_traceback}")
     
     def transcribe_text_only(self, audio_path: str) -> str:
         """仅返回转录文本"""

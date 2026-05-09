@@ -1,7 +1,7 @@
 audio:
   sample_rate: 16000
   channels: 1
-  device_name: "麦克风"
+  device_name: "远程音频"
   segment_duration: 5
 
 whisper:
