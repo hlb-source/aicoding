@@ -291,12 +291,17 @@ class VoiceAssistant:
             command = self.keyword_detector.format_command(keyword, param)
             
             self.logger.info("="*60)
-            self.logger.info("【执行opencode命令】")
-            self.logger.info(f"  命令: {command}")
+            self.logger.info("【识别到语音命令】")
+            self.logger.info(f"  原始文本: {text}")
+            self.logger.info(f"  关键词: {keyword}")
+            self.logger.info(f"  参数: {param}")
+            self.logger.info(f"  命令内容: {command}")
             self.logger.info("="*60)
             
-            log_file = self.config.get('logging', {}).get('command_log', 'logs/commands.log')
-            result = self.opencode_executor.execute_and_log(command, log_file=log_file)
+            # 只打印命令，不执行opencode
+            print("\n" + "="*60)
+            print(f"【语音命令】: {command}")
+            print("="*60 + "\n")
             
             process_end_time = datetime.now()
             process_duration = (process_end_time - process_start_time).total_seconds()
@@ -305,17 +310,16 @@ class VoiceAssistant:
             self.logger.info("【语音处理流程完成】")
             self.logger.info(f"  完成时间: {process_end_time.strftime('%Y-%m-%d %H:%M:%S')}")
             self.logger.info(f"  总耗时: {process_duration:.2f}秒")
-            self.logger.info(f"  执行状态: {'成功' if result['success'] else '失败'}")
             self.logger.info("="*60)
             
             return {
                 'text': text,
                 'detected': True,
-                'executed': result['success'],
+                'executed': False,  # 不执行，返回False
                 'keyword': keyword,
                 'param': param,
                 'command': command,
-                'result': result
+                'result': None  # 不执行，无结果
             }
             
         except Exception as e:
