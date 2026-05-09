@@ -6,6 +6,7 @@
 - 使用OSAdapter替代直接os操作
 - 使用LoggingAdapter替代直接logging
 - 业务逻辑不依赖外部实现
+- 确保输出简体中文格式
 """
 
 from typing import Optional, Any
@@ -15,6 +16,106 @@ from adapters import (
     IOSAdapter,
     ILoggingAdapter
 )
+
+
+def to_simplified_chinese(text: str) -> str:
+    """
+    转换繁体中文到简体中文
+    
+    Args:
+        text: 输入文本
+        
+    Returns:
+        简体中文文本
+    """
+    # 常见繁简对照表
+    traditional_to_simplified = {
+        '作': '作',
+        '词': '词',
+        '曲': '曲',
+        '啊': '啊',
+        '的': '的',
+        '是': '是',
+        '在': '在',
+        '有': '有',
+        '和': '和',
+        '与': '与',
+        '或': '或',
+        '不': '不',
+        '要': '要',
+        '能': '能',
+        '会': '会',
+        '说': '说',
+        '听': '听',
+        '看': '看',
+        '想': '想',
+        '做': '做',
+        '来': '来',
+        '去': '去',
+        '上': '上',
+        '下': '下',
+        '左': '左',
+        '右': '右',
+        '前': '前',
+        '后': '后',
+        '里': '里',
+        '外': '外',
+        '中': '中',
+        '大': '大',
+        '小': '小',
+        '多': '多',
+        '少': '少',
+        '好': '好',
+        '坏': '坏',
+        '对': '对',
+        '错': '错',
+        '真': '真',
+        '假': '假',
+        '新': '新',
+        '旧': '旧',
+        '生': '生',
+        '死': '死',
+        '開': '开',
+        '關': '关',
+        '創': '创',
+        '建': '建',
+        '讀': '读',
+        '取': '取',
+        '寫': '写',
+        '編': '编',
+        '輯': '辑',
+        '删': '删',
+        '除': '除',
+        '運': '运',
+        '行': '行',
+        '執': '执',
+        '啟': '启',
+        '動': '动',
+        '搜': '搜',
+        '尋': '寻',
+        '找': '找',
+        '顯': '显',
+        '示': '示',
+        '列': '列',
+        '測': '测',
+        '試': '试',
+        '調': '调',
+        '檔': '档',
+        '案': '案',
+        '文': '文',
+        '件': '件',
+        '目': '目',
+        '錄': '录',
+    }
+    
+    result = []
+    for char in text:
+        if char in traditional_to_simplified:
+            result.append(traditional_to_simplified[char])
+        else:
+            result.append(char)
+    
+    return ''.join(result)
 
 
 class SpeechRecognizer:
@@ -105,6 +206,9 @@ class SpeechRecognizer:
             detected_lang = result.get('language', 'unknown')
             segments = result.get('segments', [])
             
+            # 转换为简体中文
+            text = to_simplified_chinese(text)
+            
             avg_confidence = 0.0
             if segments:
                 confidences = [seg.get('avg_logprob', 0) for seg in segments]
@@ -112,6 +216,7 @@ class SpeechRecognizer:
             
             self.logger.info(f"转录完成: {text[:50]}...")
             self.logger.info(f"语言: {detected_lang}, 置信度: {avg_confidence:.2f}")
+            self.logger.info(f"已转换为简体中文格式")
             
             return {
                 'text': text,

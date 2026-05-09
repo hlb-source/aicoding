@@ -8,7 +8,7 @@ whisper:
   model_size: "base"
   language: "zh"
   temperature: 0.0
-  initial_prompt: ""
+  initial_prompt: "以下是简体中文的语音识别内容。"
 
 opencode:
   executable: "opencode"
