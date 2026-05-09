@@ -18,7 +18,7 @@ class LoggingAdapter:
     
     def setup(
         self,
-        log_file: str,
+        log_file: Optional[str] = None,
         level: str = 'INFO',
         format: Optional[str] = None
     ) -> bool:
@@ -26,7 +26,7 @@ class LoggingAdapter:
         设置日志
         
         Args:
-            log_file: 日志文件
+            log_file: 日志文件（None表示只输出到console）
             level: 日志级别
             format: 日志格式
             
@@ -34,18 +34,20 @@ class LoggingAdapter:
             是否成功
         """
         try:
-            Path(log_file).parent.mkdir(parents=True, exist_ok=True)
-            
             log_format = format or '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             log_level = getattr(logging, level.upper(), logging.INFO)
+            
+            handlers = [logging.StreamHandler(sys.stdout)]
+            
+            if log_file:
+                Path(log_file).parent.mkdir(parents=True, exist_ok=True)
+                handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
             
             logging.basicConfig(
                 level=log_level,
                 format=log_format,
-                handlers=[
-                    logging.FileHandler(log_file, encoding='utf-8'),
-                    logging.StreamHandler(sys.stdout)
-                ]
+                handlers=handlers,
+                force=True
             )
             
             return True

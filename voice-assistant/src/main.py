@@ -111,10 +111,11 @@ class VoiceAssistant:
     def _setup_logging(self) -> None:
         """设置日志"""
         log_config = self.config.get('logging', {})
-        log_file = log_config.get('voice_log', 'logs/voice.log')
         log_level = log_config.get('level', 'INFO')
         
-        self.logging_adapter.setup(log_file=log_file, level=log_level)
+        # 只输出到console，不输出到voice.log
+        # voice.log专门用于记录语音输入文本
+        self.logging_adapter.setup(log_file=None, level=log_level)
     
     def _initialize_modules(self) -> None:
         """初始化所有模块"""
@@ -175,19 +176,11 @@ class VoiceAssistant:
         
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
-        log_content = "\n" + "="*60 + "\n"
-        log_content += f"[{timestamp}] 麦克风输入记录\n"
-        log_content += "="*60 + "\n"
-        log_content += f"状态: {status}\n"
-        log_content += f"语言: {language}\n"
-        log_content += f"置信度: {confidence:.2f}\n"
-        
+        # 只记录语音输入内容，简洁格式
         if text:
-            log_content += f"识别文本:\n{text}\n"
+            log_content = f"[{timestamp}] {text}\n"
         else:
-            log_content += "识别文本: (无)\n"
-        
-        log_content += "="*60 + "\n"
+            log_content = f"[{timestamp}] (无语音输入)\n"
         
         self.os_adapter.write_file(log_file, log_content, mode='a', encoding='utf-8')
     
