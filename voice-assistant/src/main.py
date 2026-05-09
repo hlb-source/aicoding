@@ -8,6 +8,14 @@
 """
 
 import sys
+import os
+
+# 设置UTF-8编码输出（解决Windows乱码问题）
+if sys.platform == 'win32':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8')
+
 from typing import Optional
 from adapters import (
     AdapterFactory,
