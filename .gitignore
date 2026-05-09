@@ -1,0 +1,67 @@
+# FFmpeg 目录（大型二进制文件）
+ffmpeg/
+ffmpeg/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Whisper 模型文件（大型文件）
+*.pt
+*.bin
+models/
+*.ggml
+
+# 临时音频文件
+*.wav
+temp/
+tmp/
+
+# 日志文件
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+
+# 压缩文件
+*.7z
+*.zip
+*.tar
+*.gz
+
+# Node modules
+node_modules/
+
+# 环境变量
+.env
+.env.local
+
+# Microsoft Store Python 路径（特殊路径）
+WindowsApps/
