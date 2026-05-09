@@ -35,20 +35,20 @@ class LoggingAdapter:
             是否成功
         """
         try:
-            # Windows平台强制UTF-8编码
-            if sys.platform == 'win32':
-                if hasattr(sys.stdout, 'buffer'):
-                    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-                if hasattr(sys.stderr, 'buffer'):
-                    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-            
             log_format = format or '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             log_level = getattr(logging, level.upper(), logging.INFO)
             
             handlers = []
             
-            # Console handler with UTF-8
-            console_handler = logging.StreamHandler(sys.stdout)
+            # Console handler with UTF-8 stream
+            if sys.platform == 'win32':
+                # Windows: Create new UTF-8 stream (don't wrap sys.stdout)
+                console_stream = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', write_through=True)
+                console_handler = logging.StreamHandler(console_stream)
+            else:
+                # Linux/macOS: Use default stdout
+                console_handler = logging.StreamHandler(sys.stdout)
+            
             console_handler.setFormatter(logging.Formatter(log_format))
             handlers.append(console_handler)
             
@@ -73,6 +73,7 @@ class LoggingAdapter:
             return True
             
         except Exception as e:
+            # Don't use logging here, just print
             print(f"Logging setup error: {e}")
             return False
     
