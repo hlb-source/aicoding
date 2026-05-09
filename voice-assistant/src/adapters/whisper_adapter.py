@@ -56,7 +56,8 @@ class WhisperAdapter:
             language=language,
             temperature=temperature,
             initial_prompt=initial_prompt,
-            verbose=False
+            verbose=False,
+            fp16=False
         )
         
         return {
