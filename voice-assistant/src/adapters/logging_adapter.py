@@ -9,6 +9,7 @@ Logging适配器 - 隔离logging模块依赖
 
 import logging
 import sys
+import io
 from typing import Any, Optional
 from pathlib import Path
 
@@ -34,14 +35,33 @@ class LoggingAdapter:
             是否成功
         """
         try:
+            # Windows平台强制UTF-8编码
+            if sys.platform == 'win32':
+                if hasattr(sys.stdout, 'buffer'):
+                    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+                if hasattr(sys.stderr, 'buffer'):
+                    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+            
             log_format = format or '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
             log_level = getattr(logging, level.upper(), logging.INFO)
             
-            handlers = [logging.StreamHandler(sys.stdout)]
+            handlers = []
             
+            # Console handler with UTF-8
+            console_handler = logging.StreamHandler(sys.stdout)
+            console_handler.setFormatter(logging.Formatter(log_format))
+            handlers.append(console_handler)
+            
+            # File handler with UTF-8 (optional)
             if log_file:
                 Path(log_file).parent.mkdir(parents=True, exist_ok=True)
-                handlers.append(logging.FileHandler(log_file, encoding='utf-8'))
+                file_handler = logging.FileHandler(log_file, encoding='utf-8')
+                file_handler.setFormatter(logging.Formatter(log_format))
+                handlers.append(file_handler)
+            
+            # Reset logging configuration
+            for handler in logging.root.handlers[:]:
+                logging.root.removeHandler(handler)
             
             logging.basicConfig(
                 level=log_level,
@@ -52,7 +72,8 @@ class LoggingAdapter:
             
             return True
             
-        except Exception:
+        except Exception as e:
+            print(f"Logging setup error: {e}")
             return False
     
     def get_logger(self, name: str) -> Any:
