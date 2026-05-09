@@ -153,30 +153,116 @@ class VoiceAssistant:
         self.logger.info(f"收到信号 {signum}，准备退出...")
         self.running = False
     
+    def _log_voice_input(
+        self,
+        log_file: str,
+        text: str,
+        language: str,
+        confidence: float,
+        status: str
+    ) -> None:
+        """
+        记录麦克风输入到日志文件
+        
+        Args:
+            log_file: 日志文件路径
+            text: 识别文本
+            language: 语言
+            confidence: 置信度
+            status: 状态
+        """
+        from datetime import datetime
+        
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        log_content = "\n" + "="*60 + "\n"
+        log_content += f"[{timestamp}] 麦克风输入记录\n"
+        log_content += "="*60 + "\n"
+        log_content += f"状态: {status}\n"
+        log_content += f"语言: {language}\n"
+        log_content += f"置信度: {confidence:.2f}\n"
+        
+        if text:
+            log_content += f"识别文本:\n{text}\n"
+        else:
+            log_content += "识别文本: (无)\n"
+        
+        log_content += "="*60 + "\n"
+        
+        self.os_adapter.write_file(log_file, log_content, mode='a', encoding='utf-8')
+    
     def process_segment(self, duration: Optional[float] = None) -> Optional[dict]:
         """处理一个语音段"""
+        from datetime import datetime
+        
         if duration is None:
             duration = self.config.get('audio', {}).get('segment_duration', 5)
         
+        process_start_time = datetime.now()
+        
         try:
-            self.logger.info(f"开始录音（{duration}秒）...")
+            self.logger.info("="*60)
+            self.logger.info("【语音处理流程开始】")
+            self.logger.info(f"  处理时间: {process_start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            self.logger.info(f"  录音时长: {duration}秒")
+            self.logger.info("="*60)
+            
             audio_file = self.audio_capture.record_segment(duration=duration)
             
-            self.logger.info("开始语音识别...")
+            self.logger.info("="*60)
+            self.logger.info("【语音识别开始】")
+            self.logger.info("="*60)
+            
             transcription = self.speech_recognizer.transcribe(audio_file)
             text = transcription['text']
+            language = transcription.get('language', 'unknown')
+            confidence = transcription.get('confidence', 0.0)
             
             if not text:
-                self.logger.info("未检测到语音")
+                self.logger.info("="*60)
+                self.logger.info("【麦克风输入：无语音】")
+                self.logger.info(f"  识别时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                self.logger.info(f"  结果: 未检测到语音")
+                self.logger.info("="*60)
+                
+                voice_log_file = self.config.get('logging', {}).get('voice_log', 'logs/voice.log')
+                self._log_voice_input(
+                    log_file=voice_log_file,
+                    text="",
+                    language=language,
+                    confidence=confidence,
+                    status="无语音"
+                )
+                
                 self.audio_capture.cleanup(audio_file)
                 return None
             
-            self.logger.info(f"识别结果: {text}")
+            self.logger.info("="*60)
+            self.logger.info("【麦克风输入：语音识别结果】")
+            self.logger.info(f"  识别时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            self.logger.info(f"  识别语言: {language}")
+            self.logger.info(f"  置信度: {confidence:.2f}")
+            self.logger.info(f"  识别文本: {text}")
+            self.logger.info("="*60)
+            
+            voice_log_file = self.config.get('logging', {}).get('voice_log', 'logs/voice.log')
+            self._log_voice_input(
+                log_file=voice_log_file,
+                text=text,
+                language=language,
+                confidence=confidence,
+                status="已识别"
+            )
             
             detected, keyword, param = self.keyword_detector.detect(text)
             
             if not detected:
-                self.logger.info("未检测到关键词")
+                self.logger.info("="*60)
+                self.logger.info("【关键词检测结果】")
+                self.logger.info(f"  检测状态: 未检测到关键词")
+                self.logger.info(f"  原始文本: {text}")
+                self.logger.info("="*60)
+                
                 self.audio_capture.cleanup(audio_file)
                 return {
                     'text': text,
@@ -184,8 +270,25 @@ class VoiceAssistant:
                     'executed': False
                 }
             
+            category = self.keyword_detector.get_keyword_category(keyword)
+            
+            self.logger.info("="*60)
+            self.logger.info("【关键词检测结果】")
+            self.logger.info(f"  检测状态: 已检测到关键词")
+            self.logger.info(f"  关键词: {keyword}")
+            self.logger.info(f"  关键词类别: {category or '未知'}")
+            self.logger.info(f"  命令参数: {param}")
+            self.logger.info(f"  原始文本: {text}")
+            self.logger.info("="*60)
+            
             if not self.keyword_detector.is_valid_command(keyword, param):
-                self.logger.warning(f"命令验证失败: {keyword} {param}")
+                self.logger.warning("="*60)
+                self.logger.warning("【命令验证失败】")
+                self.logger.warning(f"  关键词: {keyword}")
+                self.logger.warning(f"  参数: {param}")
+                self.logger.warning(f"  失败原因: 命令验证失败")
+                self.logger.warning("="*60)
+                
                 self.audio_capture.cleanup(audio_file)
                 return {
                     'text': text,
@@ -195,12 +298,26 @@ class VoiceAssistant:
                 }
             
             command = self.keyword_detector.format_command(keyword, param)
-            self.logger.info(f"执行命令: {command}")
+            
+            self.logger.info("="*60)
+            self.logger.info("【执行opencode命令】")
+            self.logger.info(f"  命令: {command}")
+            self.logger.info("="*60)
             
             log_file = self.config.get('logging', {}).get('command_log', 'logs/commands.log')
             result = self.opencode_executor.execute_and_log(command, log_file=log_file)
             
             self.audio_capture.cleanup(audio_file)
+            
+            process_end_time = datetime.now()
+            process_duration = (process_end_time - process_start_time).total_seconds()
+            
+            self.logger.info("="*60)
+            self.logger.info("【语音处理流程完成】")
+            self.logger.info(f"  完成时间: {process_end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            self.logger.info(f"  总耗时: {process_duration:.2f}秒")
+            self.logger.info(f"  执行状态: {'成功' if result['success'] else '失败'}")
+            self.logger.info("="*60)
             
             return {
                 'text': text,
@@ -213,7 +330,12 @@ class VoiceAssistant:
             }
             
         except Exception as e:
-            self.logger.error(f"处理失败: {e}")
+            self.logger.error("="*60)
+            self.logger.error("【语音处理流程异常】")
+            self.logger.error(f"  异常时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            self.logger.error(f"  异常信息: {e}")
+            self.logger.error("="*60)
+            
             return {
                 'text': '',
                 'detected': False,

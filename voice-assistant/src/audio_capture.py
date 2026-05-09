@@ -115,12 +115,23 @@ class AudioCapture:
         Returns:
             输出音频文件路径
         """
+        from datetime import datetime
+        
+        start_time = datetime.now()
+        
         if output_path is None:
             output_path = self.os_adapter.get_temp_file(suffix=".wav")
         
         self.os_adapter.create_directory(output_path.rsplit('/', 1)[0] if '/' in output_path else '.')
         
-        self.logger.info(f"开始录音: {duration}秒, 设备: {self.device_name}")
+        self.logger.info("="*60)
+        self.logger.info("【麦克风录音开始】")
+        self.logger.info(f"  开始时间: {start_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"  录音时长: {duration}秒")
+        self.logger.info(f"  音频设备: {self.device_name}")
+        self.logger.info(f"  采样率: {self.sample_rate} Hz")
+        self.logger.info(f"  通道数: {self.channels}")
+        self.logger.info("="*60)
         
         success = self.ffmpeg_adapter.record_audio(
             ffmpeg_path=self.ffmpeg_path,
@@ -131,16 +142,38 @@ class AudioCapture:
             channels=self.channels
         )
         
+        end_time = datetime.now()
+        
         if not success:
             self.logger.error("录音失败")
+            self.logger.info("="*60)
+            self.logger.info("【麦克风录音失败】")
+            self.logger.info(f"  结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            self.logger.info(f"  失败原因: ffmpeg录音命令执行失败")
+            self.logger.info("="*60)
             raise RuntimeError("录音失败")
         
         if not self.os_adapter.file_exists(output_path):
             self.logger.error("录音文件未生成")
+            self.logger.info("="*60)
+            self.logger.info("【麦克风录音失败】")
+            self.logger.info(f"  结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            self.logger.info(f"  失败原因: 音频文件未生成")
+            self.logger.info("="*60)
             raise RuntimeError("录音文件未生成")
         
         file_size = self.os_adapter.get_file_size(output_path)
-        self.logger.info(f"录音完成: {output_path} ({file_size} bytes)")
+        actual_duration = (end_time - start_time).total_seconds()
+        
+        self.logger.info("="*60)
+        self.logger.info("【麦克风录音完成】")
+        self.logger.info(f"  结束时间: {end_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        self.logger.info(f"  实际耗时: {actual_duration:.2f}秒")
+        self.logger.info(f"  音频文件: {output_path}")
+        self.logger.info(f"  文件大小: {file_size} bytes ({file_size/1024:.2f} KB)")
+        self.logger.info(f"  音频格式: WAV PCM 16-bit")
+        self.logger.info(f"  音频设备: {self.device_name}")
+        self.logger.info("="*60)
         
         return output_path
     
