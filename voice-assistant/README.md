@@ -14,6 +14,68 @@ Python语音助手 - 解放双手，语音控制opencode干活
 - 📝 完整日志记录（voice.log + commands.log）
 - 🔒 安全措施（关键词白名单、危险命令检测、超时控制）
 
+## 架构设计
+
+**三层架构：适配器层隔离所有外部依赖**
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                      业务逻辑层                               │
+│  (audio_capture, speech_recognizer, keyword_detector,       │
+│   opencode_executor, main)                                  │
+│  - 不依赖任何外部实现                                         │
+│  - 只依赖适配器接口                                           │
+│  - 纯业务逻辑，易于测试                                       │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│                      适配器层                                │
+│  (adapters/)                                                │
+│  - ISubprocessAdapter → subprocess.run()                    │
+│  - IWhisperAdapter → whisper.load_model()                   │
+│  - IFFmpegAdapter → ffmpeg工具                               │
+│  - IOpenCodeAdapter → opencode CLI                          │
+│  - IYAMLAdapter → yaml.safe_load()                          │
+│  - IOSAdapter → os.remove()                                 │
+│  - ILoggingAdapter → logging.basicConfig()                  │
+│  - ISignalAdapter → signal.signal()                         │
+│                                                              │
+│  ✅ 提供统一接口                                             │
+│  ✅ 封装外部实现                                             │
+│  ✅ 方便mock/stub测试                                        │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│                    外部依赖层                                 │
+│  - subprocess (Python标准库)                                │
+│  - whisper (openai-whisper)                                 │
+│  - ffmpeg (外部工具)                                         │
+│  - opencode (外部CLI)                                        │
+│  - yaml (PyYAML)                                            │
+│  - os, logging, signal (Python标准库)                       │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**架构优势：**
+
+| 优势 | 说明 |
+|------|------|
+| **易于测试** | 业务逻辑不依赖外部实现，可注入mock/stub |
+| **易于维护** | 外部实现变更只需修改适配器，不影响业务逻辑 |
+| **易于扩展** | 新增功能只需添加适配器接口和实现 |
+| **易于Mock** | 测试时可用MockAdapter替换真实适配器 |
+
+**测试示例（不生成测试代码，仅展示设计）：**
+
+```python
+# 测试audio_capture时，注入MockFFmpegAdapter
+mock_ffmpeg = MockFFmpegAdapter()
+audio = AudioCapture(ffmpeg_adapter=mock_ffmpeg)
+
+# mock返回预设结果，无需真实ffmpeg
+assert audio.record_segment(5) == "/tmp/test.wav"
+```
+
 ## 技术栈
 
 | 技术层 | 选型 | 版本 | 说明 |

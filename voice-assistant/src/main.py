@@ -1,45 +1,60 @@
 """
-主程序入口 - 整合所有模块实现语音控制opencode
+主程序入口 - 使用适配器隔离所有外部依赖
 
-功能：
-- 加载配置
-- 初始化所有模块
-- 实现主循环
-- 异常处理
-- 日志记录
+改进：
+- 所有外部依赖通过适配器访问
+- 业务逻辑完全不依赖外部实现
+- 方便测试时注入mock/stub
 """
 
 import sys
-import os
-import logging
-import signal
-from pathlib import Path
 from typing import Optional
-
-import yaml
+from adapters import (
+    AdapterFactory,
+    IYAMLAdapter,
+    IOSAdapter,
+    ILoggingAdapter,
+    ISignalAdapter
+)
 
 from audio_capture import AudioCapture
 from speech_recognizer import SpeechRecognizer
 from keyword_detector import KeywordDetector
 from opencode_executor import OpenCodeExecutor
 
-logger = logging.getLogger(__name__)
-
 
 class VoiceAssistant:
-    """语音助手主类"""
+    """语音助手主类 - 使用适配器隔离依赖"""
     
-    def __init__(self, config_path: str = "config/config.yaml"):
+    def __init__(
+        self,
+        config_path: str = "config/config.yaml",
+        yaml_adapter: Optional[IYAMLAdapter] = None,
+        os_adapter: Optional[IOSAdapter] = None,
+        logging_adapter: Optional[ILoggingAdapter] = None,
+        signal_adapter: Optional[ISignalAdapter] = None
+    ):
         """
         初始化语音助手
         
         Args:
             config_path: 配置文件路径
+            yaml_adapter: YAML适配器（测试时可注入mock）
+            os_adapter: OS适配器（测试时可注入mock）
+            logging_adapter: Logging适配器（测试时可注入mock）
+            signal_adapter: Signal适配器（测试时可注入mock）
         """
         self.config_path = config_path
-        self.config = self._load_config()
         
+        self.yaml_adapter = yaml_adapter or AdapterFactory.create_yaml_adapter()
+        self.os_adapter = os_adapter or AdapterFactory.create_os_adapter()
+        self.logging_adapter = logging_adapter or AdapterFactory.create_logging_adapter()
+        self.signal_adapter = signal_adapter or AdapterFactory.create_signal_adapter()
+        
+        self.config = self._load_config()
         self._setup_logging()
+        
+        self.logger = self.logging_adapter.get_logger(__name__)
         
         self.audio_capture = None
         self.speech_recognizer = None
@@ -50,25 +65,20 @@ class VoiceAssistant:
         
         self._initialize_modules()
         
-        signal.signal(signal.SIGINT, self._signal_handler)
-        signal.signal(signal.SIGTERM, self._signal_handler)
+        self.signal_adapter.register_handler(2, self._signal_handler)
+        self.signal_adapter.register_handler(15, self._signal_handler)
     
     def _load_config(self) -> dict:
         """加载配置文件"""
-        config_file = Path(self.config_path)
+        config = self.yaml_adapter.load(self.config_path)
         
-        if not config_file.exists():
-            logger.warning(f"配置文件不存在: {config_file}")
+        if not config:
+            self.logging_adapter.get_logger(__name__).warning(
+                f"配置文件不存在或为空: {self.config_path}"
+            )
             return self._get_default_config()
         
-        try:
-            with open(config_file, 'r', encoding='utf-8') as f:
-                config = yaml.safe_load(f)
-            logger.info(f"配置加载成功: {config_file}")
-            return config
-        except Exception as e:
-            logger.error(f"配置加载失败: {e}")
-            return self._get_default_config()
+        return config
     
     def _get_default_config(self) -> dict:
         """获取默认配置"""
@@ -76,7 +86,7 @@ class VoiceAssistant:
             'audio': {
                 'sample_rate': 16000,
                 'channels': 1,
-                'device_index': None,
+                'device_name': '麦克风',
                 'segment_duration': 5
             },
             'whisper': {
@@ -90,16 +100,11 @@ class VoiceAssistant:
                 'timeout': 60,
                 'auto_confirm': True
             },
-            'keywords': [
-                '创建', '读取', '编辑', '删除', '运行',
-                '写代码', '搜索', '显示'
-            ],
+            'keywords': KeywordDetector.DEFAULT_KEYWORDS,
             'logging': {
                 'voice_log': 'logs/voice.log',
                 'command_log': 'logs/commands.log',
-                'level': 'INFO',
-                'max_size': 10485760,
-                'backup_count': 5
+                'level': 'INFO'
             }
         }
     
@@ -109,28 +114,18 @@ class VoiceAssistant:
         log_file = log_config.get('voice_log', 'logs/voice.log')
         log_level = log_config.get('level', 'INFO')
         
-        Path(log_file).parent.mkdir(parents=True, exist_ok=True)
-        
-        logging.basicConfig(
-            level=getattr(logging, log_level),
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            handlers=[
-                logging.FileHandler(log_file, encoding='utf-8'),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
-        
-        logger.info("日志系统初始化完成")
+        self.logging_adapter.setup(log_file=log_file, level=log_level)
     
     def _initialize_modules(self) -> None:
         """初始化所有模块"""
-        logger.info("初始化模块...")
+        self.logger.info("初始化模块...")
         
         audio_config = self.config.get('audio', {})
         self.audio_capture = AudioCapture(
+            ffmpeg_path=self.config.get('ffmpeg_path', 'ffmpeg'),
             sample_rate=audio_config.get('sample_rate', 16000),
             channels=audio_config.get('channels', 1),
-            device_index=audio_config.get('device_index')
+            device_name=audio_config.get('device_name', '麦克风')
         )
         
         whisper_config = self.config.get('whisper', {})
@@ -141,56 +136,47 @@ class VoiceAssistant:
             initial_prompt=whisper_config.get('initial_prompt', '')
         )
         
-        keywords = self.config.get('keywords', [])
+        keywords = self.config.get('keywords', KeywordDetector.DEFAULT_KEYWORDS)
         self.keyword_detector = KeywordDetector(keywords=keywords)
         
         opencode_config = self.config.get('opencode', {})
         self.opencode_executor = OpenCodeExecutor(
             opencode_path=opencode_config.get('executable', 'opencode'),
             timeout=opencode_config.get('timeout', 60),
-            auto_confirm=opencode_config.get('auto_confirm', True),
-            workdir=str(Path.cwd())
+            auto_confirm=opencode_config.get('auto_confirm', True)
         )
         
-        logger.info("所有模块初始化完成")
+        self.logger.info("所有模块初始化完成")
     
     def _signal_handler(self, signum, frame) -> None:
         """信号处理器"""
-        logger.info(f"收到信号 {signum}，准备退出...")
+        self.logger.info(f"收到信号 {signum}，准备退出...")
         self.running = False
     
     def process_segment(self, duration: Optional[float] = None) -> Optional[dict]:
-        """
-        处理一个语音段
-        
-        Args:
-            duration: 录音时长（秒）
-            
-        Returns:
-            处理结果
-        """
+        """处理一个语音段"""
         if duration is None:
             duration = self.config.get('audio', {}).get('segment_duration', 5)
         
         try:
-            logger.info(f"开始录音（{duration}秒）...")
+            self.logger.info(f"开始录音（{duration}秒）...")
             audio_file = self.audio_capture.record_segment(duration=duration)
             
-            logger.info("开始语音识别...")
+            self.logger.info("开始语音识别...")
             transcription = self.speech_recognizer.transcribe(audio_file)
             text = transcription['text']
             
             if not text:
-                logger.info("未检测到语音")
+                self.logger.info("未检测到语音")
                 self.audio_capture.cleanup(audio_file)
                 return None
             
-            logger.info(f"识别结果: {text}")
+            self.logger.info(f"识别结果: {text}")
             
             detected, keyword, param = self.keyword_detector.detect(text)
             
             if not detected:
-                logger.info("未检测到关键词")
+                self.logger.info("未检测到关键词")
                 self.audio_capture.cleanup(audio_file)
                 return {
                     'text': text,
@@ -199,7 +185,7 @@ class VoiceAssistant:
                 }
             
             if not self.keyword_detector.is_valid_command(keyword, param):
-                logger.warning(f"命令验证失败: {keyword} {param}")
+                self.logger.warning(f"命令验证失败: {keyword} {param}")
                 self.audio_capture.cleanup(audio_file)
                 return {
                     'text': text,
@@ -209,7 +195,7 @@ class VoiceAssistant:
                 }
             
             command = self.keyword_detector.format_command(keyword, param)
-            logger.info(f"执行命令: {command}")
+            self.logger.info(f"执行命令: {command}")
             
             log_file = self.config.get('logging', {}).get('command_log', 'logs/commands.log')
             result = self.opencode_executor.execute_and_log(command, log_file=log_file)
@@ -227,7 +213,7 @@ class VoiceAssistant:
             }
             
         except Exception as e:
-            logger.error(f"处理失败: {e}")
+            self.logger.error(f"处理失败: {e}")
             return {
                 'text': '',
                 'detected': False,
@@ -237,11 +223,10 @@ class VoiceAssistant:
     
     def run(self) -> None:
         """运行主循环"""
-        logger.info("="*60)
-        logger.info("语音助手启动")
-        logger.info("="*60)
-        logger.info("等待语音输入... (按Ctrl+C退出)")
-        logger.info("")
+        self.logger.info("="*60)
+        self.logger.info("语音助手启动")
+        self.logger.info("="*60)
+        self.logger.info("等待语音输入... (按Ctrl+C退出)")
         
         self.running = True
         
@@ -251,43 +236,37 @@ class VoiceAssistant:
                 
                 if result and result.get('detected'):
                     if result.get('executed'):
-                        logger.info("✓ 命令执行成功")
+                        self.logger.info("✓ 命令执行成功")
                     else:
-                        logger.warning("✗ 命令执行失败")
+                        self.logger.warning("✗ 命令执行失败")
                 
             except KeyboardInterrupt:
-                logger.info("用户中断")
+                self.logger.info("用户中断")
                 break
             except Exception as e:
-                logger.error(f"主循环异常: {e}")
+                self.logger.error(f"主循环异常: {e}")
                 continue
         
-        logger.info("="*60)
-        logger.info("语音助手停止")
-        logger.info("="*60)
+        self.logger.info("="*60)
+        self.logger.info("语音助手停止")
+        self.logger.info("="*60)
     
     def run_once(self, duration: Optional[float] = None) -> dict:
-        """
-        运行一次语音处理
-        
-        Args:
-            duration: 录音时长
-            
-        Returns:
-            处理结果
-        """
+        """运行一次语音处理"""
         return self.process_segment(duration=duration)
 
 
 def main():
     """主函数"""
+    import os
+    
     config_path = os.environ.get('VOICE_ASSISTANT_CONFIG', 'config/config.yaml')
     
     try:
         assistant = VoiceAssistant(config_path=config_path)
         assistant.run()
     except Exception as e:
-        logger.error(f"启动失败: {e}")
+        AdapterFactory.create_logging_adapter().get_logger(__name__).error(f"启动失败: {e}")
         sys.exit(1)
 
 
