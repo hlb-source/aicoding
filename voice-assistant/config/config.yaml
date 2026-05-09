@@ -6,9 +6,9 @@ audio:
 
 whisper:
   model_size: "base"
-  language: "zh"
+  language: null
   temperature: 0.0
-  initial_prompt: "以下是简体中文的语音识别内容。"
+  initial_prompt: "以下是中英文混合的语音内容。包括中文和英文命令，例如：创建文件 main.py，read file app.py，运行test，写代码实现function。"
 
 opencode:
   executable: "opencode"

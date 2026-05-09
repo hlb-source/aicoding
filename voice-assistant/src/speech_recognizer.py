@@ -173,11 +173,11 @@ class SpeechRecognizer:
         language: Optional[str] = None
     ) -> dict:
         """
-        转录音频文件
+        转录音频文件（支持中英文混合）
         
         Args:
             audio_path: 音频文件路径
-            language: 语言代码
+            language: 语言代码（None=自动检测中英文）
             
         Returns:
             转录结果字典
@@ -187,17 +187,19 @@ class SpeechRecognizer:
         if not self.os_adapter.file_exists(audio_path):
             raise FileNotFoundError(f"音频文件不存在: {audio_path}")
         
-        lang = language or self.language
+        # 不指定语言，让Whisper自动检测中英文
+        lang = language if language else None
         
         self.logger.info(f"开始转录音频: {audio_path}")
         self.logger.info(f"音频文件存在: {self.os_adapter.file_exists(audio_path)}")
         self.logger.info(f"音频文件大小: {self.os_adapter.get_file_size(audio_path)}")
+        self.logger.info(f"语言设置: 自动检测中英文")
         
         try:
             result = self.whisper_adapter.transcribe(
                 model=self.model,
                 audio_path=audio_path,
-                language=lang,
+                language=lang,  # None=自动检测
                 temperature=self.temperature,
                 initial_prompt=self.initial_prompt
             )
@@ -206,7 +208,7 @@ class SpeechRecognizer:
             detected_lang = result.get('language', 'unknown')
             segments = result.get('segments', [])
             
-            # 转换为简体中文
+            # 保持中英文混合格式，只转换繁体中文部分到简体中文
             text = to_simplified_chinese(text)
             
             avg_confidence = 0.0
@@ -214,9 +216,9 @@ class SpeechRecognizer:
                 confidences = [seg.get('avg_logprob', 0) for seg in segments]
                 avg_confidence = sum(confidences) / len(confidences) if confidences else 0.0
             
-            self.logger.info(f"转录完成: {text[:50]}...")
-            self.logger.info(f"语言: {detected_lang}, 置信度: {avg_confidence:.2f}")
-            self.logger.info(f"已转换为简体中文格式")
+            self.logger.info(f"转录完成: {text[:100]}...")
+            self.logger.info(f"检测语言: {detected_lang}, 置信度: {avg_confidence:.2f}")
+            self.logger.info(f"输出格式: 中英文混合")
             
             return {
                 'text': text,
