@@ -1,0 +1,4 @@
+openai-whisper==20250625
+torch==2.11.0+cpu
+numpy==2.4.4
+pyyaml==6.0.2

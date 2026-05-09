@@ -1,0 +1,33 @@
+audio:
+  sample_rate: 16000
+  channels: 1
+  device_index: null
+  segment_duration: 5
+
+whisper:
+  model_size: "base"
+  language: "zh"
+  temperature: 0.0
+  initial_prompt: ""
+
+opencode:
+  executable: "opencode"
+  timeout: 60
+  auto_confirm: true
+
+keywords:
+  - "创建"
+  - "读取"
+  - "编辑"
+  - "删除"
+  - "运行"
+  - "写代码"
+  - "搜索"
+  - "显示"
+
+logging:
+  voice_log: "logs/voice.log"
+  command_log: "logs/commands.log"
+  level: "INFO"
+  max_size: 10485760
+  backup_count: 5
