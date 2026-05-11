@@ -11,7 +11,6 @@
 - subprocess → SubprocessAdapter
 - whisper → WhisperAdapter
 - ffmpeg → FFmpegAdapter
-- opencode → OpenCodeAdapter
 - yaml → YAMLAdapter
 - os → OSAdapter
 """
@@ -148,50 +147,6 @@ class IFFmpegAdapter(ABC):
         
         Args:
             ffmpeg_path: ffmpeg路径
-            
-        Returns:
-            是否可用
-        """
-        pass
-
-
-class IOpenCodeAdapter(ABC):
-    """OpenCode适配器接口"""
-    
-    @abstractmethod
-    def run(
-        self,
-        opencode_path: str,
-        message: str,
-        timeout: int = 60,
-        cwd: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """
-        执行opencode run命令
-        
-        Args:
-            opencode_path: opencode路径
-            message: 消息内容
-            timeout: 超时时间
-            cwd: 工作目录
-            
-        Returns:
-            {
-                'success': bool,
-                'output': str,
-                'error': str,
-                'returncode': int
-            }
-        """
-        pass
-    
-    @abstractmethod
-    def validate(self, opencode_path: str) -> bool:
-        """
-        验证opencode可用
-        
-        Args:
-            opencode_path: opencode路径
             
         Returns:
             是否可用
@@ -396,12 +351,6 @@ class AdapterFactory:
         """创建FFmpeg适配器"""
         from .ffmpeg_adapter import FFmpegAdapter
         return FFmpegAdapter()
-    
-    @staticmethod
-    def create_opencode_adapter() -> IOpenCodeAdapter:
-        """创建OpenCode适配器"""
-        from .opencode_adapter import OpenCodeAdapter
-        return OpenCodeAdapter()
     
     @staticmethod
     def create_yaml_adapter() -> IYAMLAdapter:

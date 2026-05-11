@@ -9,7 +9,6 @@ Logging适配器 - 隔离logging模块依赖
 
 import logging
 import sys
-import io
 from typing import Any, Optional
 from pathlib import Path
 
@@ -40,15 +39,8 @@ class LoggingAdapter:
             
             handlers = []
             
-            # Console handler with UTF-8 stream
-            if sys.platform == 'win32':
-                # Windows: Create new UTF-8 stream (don't wrap sys.stdout)
-                console_stream = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', write_through=True)
-                console_handler = logging.StreamHandler(console_stream)
-            else:
-                # Linux/macOS: Use default stdout
-                console_handler = logging.StreamHandler(sys.stdout)
-            
+            # Console handler - use default stdout (Windows handles encoding automatically)
+            console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setFormatter(logging.Formatter(log_format))
             handlers.append(console_handler)
             

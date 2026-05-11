@@ -2,18 +2,15 @@ audio:
   sample_rate: 16000
   channels: 1
   device_name: "远程音频"
-  segment_duration: 5
+  segment_duration: 2
+  archive_enabled: true
+  archive_dir: "logs/audio_archive"
 
 whisper:
-  model_size: "base"
-  language: null
+  model_size: "tiny"
+  language: "zh"
   temperature: 0.0
-  initial_prompt: "以下是中英文混合的语音内容。包括中文和英文命令，例如：创建文件 main.py，read file app.py，运行test，写代码实现function。"
-
-opencode:
-  executable: "opencode"
-  timeout: 60
-  auto_confirm: true
+  initial_prompt: "以下是简体中文的语音命令内容。包括：创建文件、读取文件、编辑文件、删除文件、运行测试、写代码、搜索文件、显示内容等命令。"
 
 keywords:
   创建类:
@@ -66,5 +63,3 @@ logging:
   voice_log: "logs/voice.log"
   command_log: "logs/commands.log"
   level: "INFO"
-  max_size: 10485760
-  backup_count: 5

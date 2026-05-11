@@ -35,7 +35,8 @@ class AudioCapture:
         sample_rate: int = 16000,
         channels: int = 1,
         device_name: Optional[str] = None,
-        device_index: Optional[int] = None,
+        archive_enabled: bool = False,
+        archive_dir: str = "logs/audio_archive",
         ffmpeg_adapter: Optional[IFFmpegAdapter] = None,
         os_adapter: Optional[IOSAdapter] = None,
         logging_adapter: Optional[ILoggingAdapter] = None
@@ -48,7 +49,8 @@ class AudioCapture:
             sample_rate: 采样率
             channels: 通道数
             device_name: 音频设备名称
-            device_index: 音频设备索引（备用）
+            archive_enabled: 是否归档录音文件
+            archive_dir: 归档目录路径
             ffmpeg_adapter: FFmpeg适配器（测试时可注入mock）
             os_adapter: OS适配器（测试时可注入mock）
             logging_adapter: Logging适配器（测试时可注入mock）
@@ -57,7 +59,8 @@ class AudioCapture:
         self.sample_rate = sample_rate
         self.channels = channels
         self.device_name = device_name
-        self.device_index = device_index
+        self.archive_enabled = archive_enabled
+        self.archive_dir = archive_dir
         
         self.ffmpeg_adapter = ffmpeg_adapter or AdapterFactory.create_ffmpeg_adapter()
         self.os_adapter = os_adapter or AdapterFactory.create_os_adapter()
@@ -69,6 +72,10 @@ class AudioCapture:
         
         if not self.device_name:
             self.device_name = self._auto_detect_device()
+        
+        if self.archive_enabled:
+            self.os_adapter.create_directory(self.archive_dir)
+            self.logger.info(f"录音归档已启用: {self.archive_dir}")
     
     def _validate_ffmpeg(self) -> None:
         """验证ffmpeg是否可用"""
@@ -185,9 +192,65 @@ class AudioCapture:
         
         return devices
     
-    def cleanup(self, audio_path: str) -> None:
-        """清理临时音频文件"""
-        if self.os_adapter.remove_file(audio_path):
-            self.logger.info(f"已清理临时文件: {audio_path}")
+    def cleanup(self, audio_path: str, archive: bool = True) -> str:
+        """
+        清理或归档临时音频文件
+        
+        Args:
+            audio_path: 音频文件路径
+            archive: 是否归档（True=归档，False=删除）
+            
+        Returns:
+            归档文件路径（如果归档）或空字符串（如果删除）
+        """
+        if archive and self.archive_enabled:
+            return self._archive_audio(audio_path)
         else:
-            self.logger.warning(f"清理临时文件失败: {audio_path}")
+            if self.os_adapter.remove_file(audio_path):
+                self.logger.info(f"已删除临时文件: {audio_path}")
+            else:
+                self.logger.warning(f"删除临时文件失败: {audio_path}")
+            return ""
+    
+    def _archive_audio(self, audio_path: str) -> str:
+        """
+        归档音频文件
+        
+        Args:
+            audio_path: 临时音频文件路径
+            
+        Returns:
+            归档文件路径
+        """
+        from datetime import datetime
+        import shutil
+        
+        # 创建归档目录
+        self.os_adapter.create_directory(self.archive_dir)
+        
+        # 生成归档文件名（时间戳）
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        archive_filename = f"audio_{timestamp}.wav"
+        archive_path = f"{self.archive_dir}/{archive_filename}"
+        
+        # 移动文件到归档目录
+        try:
+            shutil.move(audio_path, archive_path)
+            
+            file_size = self.os_adapter.get_file_size(archive_path)
+            
+            self.logger.info("="*60)
+            self.logger.info("【录音文件归档】")
+            self.logger.info(f"  原始路径: {audio_path}")
+            self.logger.info(f"  归档路径: {archive_path}")
+            self.logger.info(f"  文件大小: {file_size} bytes ({file_size/1024:.2f} KB)")
+            self.logger.info(f"  录音时长: {self.sample_rate}Hz采样")
+            self.logger.info("="*60)
+            
+            return archive_path
+            
+        except Exception as e:
+            self.logger.error(f"归档失败: {e}")
+            # 归档失败，删除临时文件
+            self.os_adapter.remove_file(audio_path)
+            return ""

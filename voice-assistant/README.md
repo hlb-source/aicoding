@@ -103,25 +103,7 @@ pip install -r requirements.txt
 - ffmpeg 8.1.1 ✅
 - opencode CLI 1.14.41 ✅
 
-### 2. 配置音频设备
-
-```bash
-python scripts/setup_audio.py
-```
-
-或手动配置 `config/config.yaml`：
-```yaml
-audio:
-  device_name: "麦克风"  # 或 "Microphone"
-```
-
-### 3. 运行测试
-
-```bash
-python tests/test_modules.py
-```
-
-### 4. 启动语音助手
+### 2. 启动语音助手
 
 ```bash
 python src/main.py
@@ -182,14 +164,6 @@ whisper:
   temperature: 0.0        # 采样温度（0=确定性输出）
 ```
 
-### opencode配置
-```yaml
-opencode:
-  executable: "opencode"  # opencode路径
-  timeout: 60             # 超时时间（秒）
-  auto_confirm: true      # 直接执行模式（无需确认）
-```
-
 ### 关键词配置
 ```yaml
 keywords:
@@ -224,14 +198,7 @@ voice-assistant/
 │   ├── audio_capture.py    # 音频采集模块
 │   ├── speech_recognizer.py # 语音识别模块
 │   ├── keyword_detector.py # 关键词检测模块
-│   ├── opencode_executor.py # opencode执行模块
 │   └── main.py             # 主程序入口
-├── tests/                  # 测试脚本
-│   └── test_modules.py     # 模块测试
-├── examples/               # 使用示例
-│   └── usage_examples.py   # 示例脚本
-├── scripts/                # 辅助脚本
-│   └ setup_audio.py        # 设备配置助手
 ├── config/                 # 配置文件
 │   └ config.yaml           # 主配置文件
 ├── design/                 # 设计文档
@@ -239,6 +206,7 @@ voice-assistant/
 ├── logs/                   # 日志目录
 │   ├── voice.log           # 语音日志
 │   └ commands.log          # 命令日志
+│   └ audio_archive/        # 录音归档目录
 ├── requirements.txt        # Python依赖
 └── README.md               # 项目说明
 ```

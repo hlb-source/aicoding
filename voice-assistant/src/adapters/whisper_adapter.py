@@ -5,9 +5,12 @@ Whisper适配器 - 隔离Whisper依赖
 - 封装whisper.load_model()
 - 封装model.transcribe()
 - 提供统一返回格式
+- 禁用进度条输出
 """
 
 import whisper
+import sys
+import os
 from typing import Any, Dict, Optional
 
 
@@ -51,17 +54,26 @@ class WhisperAdapter:
                 'segments': list
             }
         """
-        result = model.transcribe(
-            audio_path,
-            language=language,
-            temperature=temperature,
-            initial_prompt=initial_prompt,
-            verbose=False,
-            fp16=False
-        )
+        # 禁用tqdm进度条输出
+        old_stderr = sys.stderr
+        sys.stderr = open(os.devnull, 'w')
         
-        return {
-            'text': result.get('text', '').strip(),
-            'language': result.get('language', 'unknown'),
-            'segments': result.get('segments', [])
-        }
+        try:
+            result = model.transcribe(
+                audio_path,
+                language=language,
+                temperature=temperature,
+                initial_prompt=initial_prompt,
+                verbose=False,
+                fp16=False
+            )
+            
+            return {
+                'text': result.get('text', '').strip(),
+                'language': result.get('language', 'unknown'),
+                'segments': result.get('segments', [])
+            }
+        finally:
+            # 恢复stderr
+            sys.stderr.close()
+            sys.stderr = old_stderr
